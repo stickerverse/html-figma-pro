@@ -308,12 +308,28 @@ export function htmlToFigma(
 
       const stops: ColorStop[] = [];
       colorStops.forEach((stop, i) => {
-        const m = stop.trim().match(/(.*?)\s*(\d+%)?$/);
+        // Match color followed by optional position (% or px)
+        const m = stop
+          .trim()
+          .match(
+            /(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}|[a-z]+)\s*([\d.]+%|[\d.]+px)?$/i
+          );
         if (m) {
           const rgb = getRgbInternal(m[1].trim());
-          const pos = m[2]
-            ? parseFloat(m[2]) / 100
-            : i / Math.max(colorStops.length - 1, 1);
+          let pos: number;
+          if (m[2]) {
+            if (m[2].endsWith("%")) {
+              pos = parseFloat(m[2]) / 100;
+            } else if (m[2].endsWith("px")) {
+              // For pixel values, normalize to 0-1 range (assume 100px = 10%)
+              // This is a rough estimate since we don't know the element size
+              pos = Math.min(parseFloat(m[2]) / 1000, 1);
+            } else {
+              pos = i / Math.max(colorStops.length - 1, 1);
+            }
+          } else {
+            pos = i / Math.max(colorStops.length - 1, 1);
+          }
           if (rgb) stops.push({ color: { ...rgb }, position: pos });
         }
       });
@@ -512,18 +528,46 @@ export function htmlToFigma(
             content !== "''"
           ) {
             const elRect = el.getBoundingClientRect();
-            const width = parseFloat(pseudoStyle.width || "0") || 0;
-            const height = parseFloat(pseudoStyle.height || "0") || 0;
+
+            // Check if this is an icon font (FontAwesome, Material Icons, etc.)
+            const fontFamily = pseudoStyle.fontFamily || "";
+            const isIconFont =
+              /font\s*awesome|material|icon|icomoon|glyphicon/i.test(
+                fontFamily
+              );
+
+            // Get dimensions - for icon fonts, use fontSize as dimension
+            let width = parseFloat(pseudoStyle.width || "0") || 0;
+            let height = parseFloat(pseudoStyle.height || "0") || 0;
+
+            if (isIconFont && (width < 1 || height < 1)) {
+              const fontSize = parseFloat(pseudoStyle.fontSize || "16") || 16;
+              width = fontSize;
+              height = fontSize;
+            }
 
             if (width >= 1 && height >= 1) {
               const pseudoFills: Paint[] = [];
-              const bgColor = getRgbInternal(pseudoStyle.backgroundColor);
-              if (bgColor && bgColor.a > 0) {
-                pseudoFills.push({
-                  type: "SOLID",
-                  color: { r: bgColor.r, g: bgColor.g, b: bgColor.b },
-                  opacity: bgColor.a,
-                } as SolidPaint);
+
+              // For icon fonts, use the text color as fill
+              if (isIconFont) {
+                const iconColor = getRgbInternal(pseudoStyle.color);
+                if (iconColor) {
+                  pseudoFills.push({
+                    type: "SOLID",
+                    color: { r: iconColor.r, g: iconColor.g, b: iconColor.b },
+                    opacity: iconColor.a,
+                  } as SolidPaint);
+                }
+              } else {
+                const bgColor = getRgbInternal(pseudoStyle.backgroundColor);
+                if (bgColor && bgColor.a > 0) {
+                  pseudoFills.push({
+                    type: "SOLID",
+                    color: { r: bgColor.r, g: bgColor.g, b: bgColor.b },
+                    opacity: bgColor.a,
+                  } as SolidPaint);
+                }
               }
 
               // Check for gradient
@@ -535,20 +579,55 @@ export function htmlToFigma(
                 if (gradFill) pseudoFills.push(gradFill);
               }
 
-              if (pseudoFills.length > 0) {
+              // Calculate position based on pseudo-element display
+              const position = pseudoStyle.position || "static";
+              let x = elRect.left;
+              let y = elRect.top;
+
+              if (position === "absolute") {
+                // Absolute positioned pseudo-elements
+                const left = parseFloat(pseudoStyle.left || "0") || 0;
+                const top = parseFloat(pseudoStyle.top || "0") || 0;
+                x = elRect.left + left;
+                y = elRect.top + top;
+              } else {
+                // Inline pseudo-elements - position at start or end of parent
+                if (pseudo === "::after") {
+                  x = elRect.right - width;
+                }
+              }
+
+              // Create node if we have fills, or if it's an icon font
+              if (pseudoFills.length > 0 || isIconFont) {
                 const pseudoNode = {
                   type: "RECTANGLE",
                   ref: el,
-                  x: Math.round(elRect.left),
-                  y:
-                    pseudo === "::before"
-                      ? Math.round(elRect.top - height)
-                      : Math.round(elRect.bottom),
-                  width: Math.round(width || elRect.width),
+                  x: Math.round(x),
+                  y: Math.round(y),
+                  width: Math.round(width),
                   height: Math.round(height),
-                  fills: pseudoFills as any,
-                  name: `${el.tagName.toLowerCase()}${pseudo}`,
+                  fills:
+                    pseudoFills.length > 0
+                      ? (pseudoFills as any)
+                      : [
+                          {
+                            type: "SOLID",
+                            color: { r: 0.5, g: 0.5, b: 0.5 },
+                            opacity: 0.5,
+                          },
+                        ],
+                  name: isIconFont
+                    ? `icon${pseudo} (${fontFamily.split(",")[0].trim()})`
+                    : `${el.tagName.toLowerCase()}${pseudo}`,
                 } as WithRef<RectangleNode>;
+
+                // Add border radius if present
+                const borderRadius =
+                  parseFloat(pseudoStyle.borderRadius || "0") || 0;
+                if (borderRadius > 0) {
+                  (pseudoNode as any).cornerRadius = borderRadius;
+                }
+
                 layers.push(pseudoNode);
               }
             }
