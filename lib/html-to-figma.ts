@@ -496,6 +496,23 @@ export function htmlToFigma(
                 } as ImagePaint);
               }
             }
+            // Canvas element support - capture as data URL
+            if (el instanceof HTMLCanvasElement) {
+              try {
+                const dataUrl = el.toDataURL("image/png");
+                if (dataUrl) {
+                  fills.push({
+                    url: dataUrl,
+                    type: "IMAGE",
+                    scaleMode:
+                      computedStyle.objectFit === "contain" ? "FIT" : "FILL",
+                    imageHash: null,
+                  } as ImagePaint);
+                }
+              } catch (err) {
+                console.warn("Could not capture canvas element:", err);
+              }
+            }
             if (el instanceof HTMLPictureElement) {
               const firstSource = el.querySelector("source");
               if (firstSource) {
@@ -514,17 +531,61 @@ export function htmlToFigma(
               }
             }
             if (el instanceof HTMLVideoElement) {
-              const url = el.poster;
+              // Try to use poster image first
+              let url = el.poster;
+
+              // If no poster, try to capture current frame from video
+              if (!url && el.videoWidth > 0 && el.videoHeight > 0) {
+                try {
+                  const canvas = document.createElement("canvas");
+                  canvas.width = el.videoWidth;
+                  canvas.height = el.videoHeight;
+                  const ctx = canvas.getContext("2d");
+                  if (ctx) {
+                    ctx.drawImage(el, 0, 0, canvas.width, canvas.height);
+                    url = canvas.toDataURL("image/png");
+                  }
+                } catch (err) {
+                  console.warn("Could not capture video frame:", err);
+                }
+              }
+
               if (url) {
                 fills.push({
                   url,
                   type: "IMAGE",
-                  // TODO: object fit, position
                   scaleMode:
                     computedStyle.objectFit === "contain" ? "FIT" : "FILL",
                   imageHash: null,
                 } as ImagePaint);
+              } else {
+                // Create placeholder with dark background and play icon indicator
+                fills.push({
+                  type: "SOLID",
+                  color: { r: 0.1, g: 0.1, b: 0.1 },
+                  opacity: 1,
+                } as SolidPaint);
               }
+            }
+            // iframe support - create placeholder
+            if (el instanceof HTMLIFrameElement) {
+              // Create a placeholder with light gray background
+              fills.push({
+                type: "SOLID",
+                color: { r: 0.9, g: 0.9, b: 0.9 },
+                opacity: 1,
+              } as SolidPaint);
+
+              // Add border to indicate iframe
+              rectNode.strokes = [
+                {
+                  type: "SOLID",
+                  color: { r: 0.7, g: 0.7, b: 0.7 },
+                  opacity: 1,
+                },
+              ];
+              rectNode.strokeWeight = 2;
+              rectNode.dashPattern = [5, 5]; // Dashed border to indicate placeholder
             }
 
             if (computedStyle.boxShadow && computedStyle.boxShadow !== "none") {
@@ -638,6 +699,82 @@ export function htmlToFigma(
             }
 
             layers.push(rectNode);
+
+            // Process pseudo-elements (::before and ::after)
+            const pseudoElements = ["::before", "::after"] as const;
+            for (const pseudo of pseudoElements) {
+              const pseudoStyles = window.getComputedStyle(el as Element, pseudo);
+              const content = pseudoStyles.content;
+
+              // Check if pseudo-element has content and is not 'none'
+              if (
+                content &&
+                content !== "none" &&
+                content !== '""' &&
+                content !== "''"
+              ) {
+                // Extract actual content (remove quotes)
+                const actualContent = content.replace(/^["']|["']$/g, "");
+
+                // Get pseudo-element dimensions (approximate based on parent)
+                const pseudoRect = {
+                  left: rect.left,
+                  top: pseudo === "::before" ? rect.top : rect.bottom,
+                  width: rect.width,
+                  height: 20, // Default height, may need adjustment
+                };
+
+                const pseudoTextNode = {
+                  x: pseudoRect.left,
+                  y: pseudoRect.top,
+                  width: pseudoRect.width,
+                  height: pseudoRect.height,
+                  type: "TEXT",
+                  characters: actualContent,
+                  ref: el,
+                } as WithRef<TextNode>;
+
+                // Apply pseudo-element styles
+                const fills: SolidPaint[] = [];
+                const pseudoColor = getRgb(pseudoStyles.color);
+                if (pseudoColor) {
+                  fills.push({
+                    type: "SOLID",
+                    color: {
+                      r: pseudoColor.r,
+                      g: pseudoColor.g,
+                      b: pseudoColor.b,
+                    },
+                    opacity: pseudoColor.a || 1,
+                  } as SolidPaint);
+                }
+                if (fills.length) {
+                  pseudoTextNode.fills = fills;
+                }
+
+                // Apply font properties
+                const pseudoFontSize = parseUnits(pseudoStyles.fontSize);
+                if (pseudoFontSize) {
+                  pseudoTextNode.fontSize = pseudoFontSize.value;
+                }
+                if (pseudoStyles.fontFamily) {
+                  (pseudoTextNode as any).fontFamily = pseudoStyles.fontFamily;
+                }
+                if (pseudoStyles.fontWeight) {
+                  (pseudoTextNode as any).fontWeight = pseudoStyles.fontWeight;
+                }
+                if (pseudoStyles.fontStyle) {
+                  (pseudoTextNode as any).fontStyle = pseudoStyles.fontStyle;
+                }
+
+                // Apply z-index (slightly offset from parent)
+                const parentZIndex = (rectNode as any).zIndex || 0;
+                (pseudoTextNode as any).zIndex =
+                  pseudo === "::before" ? parentZIndex - 0.1 : parentZIndex + 0.1;
+
+                layers.push(pseudoTextNode);
+              }
+            }
           }
         }
       });
