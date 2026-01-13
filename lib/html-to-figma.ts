@@ -8,6 +8,9 @@ export function htmlToFigma(
   useFrames = false,
   time = false
 ) {
+  console.log(
+    "Antigravity: htmlToFigma running (Version With AutoScroll + Precision Fixes)"
+  );
   function getDirectionMostOfElements(
     direction: "left" | "right" | "top" | "bottom",
     elements: Element[]
@@ -452,506 +455,499 @@ export function htmlToFigma(
       return memo;
     }, [] as Element[]);
 
-    if (els) {
-      Array.from(els).forEach((el) => {
-        if (isHidden(el)) {
-          return;
-        }
-        if (el instanceof SVGSVGElement) {
-          const rect = el.getBoundingClientRect();
+    Array.from(els).forEach((el) => {
+      if (isHidden(el)) {
+        return;
+      }
+      if (el instanceof SVGSVGElement) {
+        const rect = el.getBoundingClientRect();
 
-          // TODO: pull in CSS/computed styles
-          // TODO: may need to pull in layer styles too like shadow, bg color, etc
+        // TODO: pull in CSS/computed styles
+        // TODO: may need to pull in layer styles too like shadow, bg color, etc
+        layers.push({
+          type: "SVG",
+          ref: el,
+          svg: el.outerHTML,
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        });
+        return;
+      }
+      // Sub SVG Eleemnt
+      else if (el instanceof SVGElement) {
+        return;
+      }
+
+      // if (
+      //   el.parentElement &&
+      //   el.parentElement instanceof HTMLPictureElement
+      // ) {
+      //   return;
+      // }
+
+      // Handle iframes - capture as placeholder
+      if (el instanceof HTMLIFrameElement) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width >= 1 && rect.height >= 1) {
           layers.push({
-            type: "SVG",
+            type: "RECTANGLE",
             ref: el,
-            svg: el.outerHTML,
             x: rect.left,
             y: rect.top,
             width: rect.width,
             height: rect.height,
-          });
-          return;
+            fills: [
+              {
+                type: "SOLID",
+                color: { r: 0.9, g: 0.9, b: 0.9 },
+                opacity: 1,
+              },
+            ] as any,
+            strokes: [
+              {
+                type: "SOLID",
+                color: { r: 0.8, g: 0.8, b: 0.8 },
+                opacity: 1,
+              },
+            ],
+            strokeWeight: 1,
+            name: `iframe: ${el.src || "embedded content"}`,
+          } as any);
         }
-        // Sub SVG Eleemnt
-        else if (el instanceof SVGElement) {
-          return;
-        }
+        return;
+      }
 
-        // if (
-        //   el.parentElement &&
-        //   el.parentElement instanceof HTMLPictureElement
-        // ) {
-        //   return;
-        // }
+      // Handle pseudo-elements (::before and ::after)
+      const processPseudo = (pseudo: "::before" | "::after") => {
+        const pseudoStyle = getComputedStyle(el, pseudo);
+        const content = pseudoStyle.content;
+        if (
+          content &&
+          content !== "none" &&
+          content !== '""' &&
+          content !== "''"
+        ) {
+          const elRect = el.getBoundingClientRect();
 
-        // Handle iframes - capture as placeholder
-        if (el instanceof HTMLIFrameElement) {
-          const rect = el.getBoundingClientRect();
-          if (rect.width >= 1 && rect.height >= 1) {
-            layers.push({
-              type: "RECTANGLE",
-              ref: el,
-              x: rect.left,
-              y: rect.top,
-              width: rect.width,
-              height: rect.height,
-              fills: [
-                {
-                  type: "SOLID",
-                  color: { r: 0.9, g: 0.9, b: 0.9 },
-                  opacity: 1,
-                },
-              ] as any,
-              strokes: [
-                {
-                  type: "SOLID",
-                  color: { r: 0.8, g: 0.8, b: 0.8 },
-                  opacity: 1,
-                },
-              ],
-              strokeWeight: 1,
-              name: `iframe: ${el.src || "embedded content"}`,
-            } as any);
+          // Check if this is an icon font (FontAwesome, Material Icons, etc.)
+          const fontFamily = pseudoStyle.fontFamily || "";
+          const isIconFont =
+            /font\s*awesome|material|icon|icomoon|glyphicon/i.test(fontFamily);
+
+          // Get dimensions - for icon fonts, use fontSize as dimension
+          let width = parseFloat(pseudoStyle.width || "0") || 0;
+          let height = parseFloat(pseudoStyle.height || "0") || 0;
+
+          if (isIconFont && (width < 1 || height < 1)) {
+            const fontSize = parseFloat(pseudoStyle.fontSize || "16") || 16;
+            width = fontSize;
+            height = fontSize;
           }
-          return;
-        }
 
-        // Handle pseudo-elements (::before and ::after)
-        const processPseudo = (pseudo: "::before" | "::after") => {
-          const pseudoStyle = getComputedStyle(el, pseudo);
-          const content = pseudoStyle.content;
-          if (
-            content &&
-            content !== "none" &&
-            content !== '""' &&
-            content !== "''"
-          ) {
-            const elRect = el.getBoundingClientRect();
+          if (width >= 1 && height >= 1) {
+            const pseudoFills: Paint[] = [];
 
-            // Check if this is an icon font (FontAwesome, Material Icons, etc.)
-            const fontFamily = pseudoStyle.fontFamily || "";
-            const isIconFont =
-              /font\s*awesome|material|icon|icomoon|glyphicon/i.test(
-                fontFamily
-              );
-
-            // Get dimensions - for icon fonts, use fontSize as dimension
-            let width = parseFloat(pseudoStyle.width || "0") || 0;
-            let height = parseFloat(pseudoStyle.height || "0") || 0;
-
-            if (isIconFont && (width < 1 || height < 1)) {
-              const fontSize = parseFloat(pseudoStyle.fontSize || "16") || 16;
-              width = fontSize;
-              height = fontSize;
+            // For icon fonts, use the text color as fill
+            if (isIconFont) {
+              const iconColor = getRgbInternal(pseudoStyle.color);
+              if (iconColor) {
+                pseudoFills.push({
+                  type: "SOLID",
+                  color: { r: iconColor.r, g: iconColor.g, b: iconColor.b },
+                  opacity: iconColor.a,
+                } as SolidPaint);
+              }
+            } else {
+              const bgColor = getRgbInternal(pseudoStyle.backgroundColor);
+              if (bgColor && bgColor.a > 0) {
+                pseudoFills.push({
+                  type: "SOLID",
+                  color: { r: bgColor.r, g: bgColor.g, b: bgColor.b },
+                  opacity: bgColor.a,
+                } as SolidPaint);
+              }
             }
 
-            if (width >= 1 && height >= 1) {
-              const pseudoFills: Paint[] = [];
+            // Check for gradient
+            if (
+              pseudoStyle.backgroundImage &&
+              pseudoStyle.backgroundImage !== "none"
+            ) {
+              const gradFill = parseGradient(pseudoStyle.backgroundImage);
+              if (gradFill) pseudoFills.push(gradFill);
+            }
 
-              // For icon fonts, use the text color as fill
-              if (isIconFont) {
-                const iconColor = getRgbInternal(pseudoStyle.color);
-                if (iconColor) {
-                  pseudoFills.push({
-                    type: "SOLID",
-                    color: { r: iconColor.r, g: iconColor.g, b: iconColor.b },
-                    opacity: iconColor.a,
-                  } as SolidPaint);
-                }
-              } else {
-                const bgColor = getRgbInternal(pseudoStyle.backgroundColor);
-                if (bgColor && bgColor.a > 0) {
-                  pseudoFills.push({
-                    type: "SOLID",
-                    color: { r: bgColor.r, g: bgColor.g, b: bgColor.b },
-                    opacity: bgColor.a,
-                  } as SolidPaint);
-                }
+            // Calculate position based on pseudo-element display
+            const position = pseudoStyle.position || "static";
+            let x = elRect.left;
+            let y = elRect.top;
+
+            if (position === "absolute") {
+              // Absolute positioned pseudo-elements
+              const left = parseFloat(pseudoStyle.left || "0") || 0;
+              const top = parseFloat(pseudoStyle.top || "0") || 0;
+              x = elRect.left + left;
+              y = elRect.top + top;
+            } else {
+              // Inline pseudo-elements - position at start or end of parent
+              if (pseudo === "::after") {
+                x = elRect.right - width;
+              }
+            }
+
+            // Create node if we have fills, or if it's an icon font
+            if (pseudoFills.length > 0 || isIconFont) {
+              const pseudoNode = {
+                type: "RECTANGLE",
+                ref: el,
+                x: x,
+                y: y,
+                width: width,
+                height: height,
+                fills:
+                  pseudoFills.length > 0
+                    ? (pseudoFills as any)
+                    : [
+                        {
+                          type: "SOLID",
+                          color: { r: 0.5, g: 0.5, b: 0.5 },
+                          opacity: 0.5,
+                        },
+                      ],
+                name: isIconFont
+                  ? `icon${pseudo} (${fontFamily.split(",")[0].trim()})`
+                  : `${el.tagName.toLowerCase()}${pseudo}`,
+              } as WithRef<RectangleNode>;
+
+              // Add border radius if present
+              const borderRadius =
+                parseFloat(pseudoStyle.borderRadius || "0") || 0;
+              if (borderRadius > 0) {
+                (pseudoNode as any).cornerRadius = borderRadius;
               }
 
-              // Check for gradient
-              if (
-                pseudoStyle.backgroundImage &&
-                pseudoStyle.backgroundImage !== "none"
-              ) {
-                const gradFill = parseGradient(pseudoStyle.backgroundImage);
-                if (gradFill) pseudoFills.push(gradFill);
-              }
+              layers.push(pseudoNode);
+            }
+          }
+        }
+      };
 
-              // Calculate position based on pseudo-element display
-              const position = pseudoStyle.position || "static";
-              let x = elRect.left;
-              let y = elRect.top;
+      processPseudo("::before");
+      processPseudo("::after");
 
-              if (position === "absolute") {
-                // Absolute positioned pseudo-elements
-                const left = parseFloat(pseudoStyle.left || "0") || 0;
-                const top = parseFloat(pseudoStyle.top || "0") || 0;
-                x = elRect.left + left;
-                y = elRect.top + top;
-              } else {
-                // Inline pseudo-elements - position at start or end of parent
-                if (pseudo === "::after") {
-                  x = elRect.right - width;
+      const appliedStyles = getAppliedComputedStyles(el);
+      const computedStyle = getComputedStyle(el);
+
+      if (
+        (size(appliedStyles) ||
+          el instanceof HTMLImageElement ||
+          el instanceof HTMLPictureElement ||
+          el instanceof HTMLVideoElement) &&
+        computedStyle.display !== "none"
+      ) {
+        const rect = getBoundingClientRect(el);
+
+        if (rect.width >= 1 && rect.height >= 1) {
+          const fills: Paint[] = [];
+
+          const color = getRgb(computedStyle.backgroundColor);
+
+          if (color) {
+            fills.push({
+              type: "SOLID",
+              color: {
+                r: color.r,
+                g: color.g,
+                b: color.b,
+              },
+              opacity: color.a || 1,
+            } as SolidPaint);
+          }
+
+          const rectNode = {
+            type: "RECTANGLE",
+            ref: el,
+            x: rect.left,
+            y: rect.top,
+            width: rect.width,
+            height: rect.height,
+            fills: fills as any,
+          } as WithRef<RectangleNode>;
+
+          // Apply element opacity
+          const opacity = parseFloat(computedStyle.opacity || "1");
+          if (!isNaN(opacity) && opacity < 1) {
+            (rectNode as any).opacity = opacity;
+          }
+
+          if (computedStyle.border) {
+            const parsed = computedStyle.border.match(
+              /^([\d\.]+)px\s*(\w+)\s*(.*)$/
+            );
+            if (parsed) {
+              let [_match, width, type, color] = parsed;
+              if (width && width !== "0" && type !== "none" && color) {
+                const rgb = getRgb(color);
+                if (rgb) {
+                  rectNode.strokes = [
+                    {
+                      type: "SOLID",
+                      color: { r: rgb.r, b: rgb.b, g: rgb.g },
+                      opacity: rgb.a || 1,
+                    },
+                  ];
+                  rectNode.strokeWeight = parseFloat(width);
                 }
               }
+            }
+          }
 
-              // Create node if we have fills, or if it's an icon font
-              if (pseudoFills.length > 0 || isIconFont) {
-                const pseudoNode = {
-                  type: "RECTANGLE",
-                  ref: el,
-                  x: x,
-                  y: y,
-                  width: width,
-                  height: height,
-                  fills:
-                    pseudoFills.length > 0
-                      ? (pseudoFills as any)
-                      : [
+          if (!rectNode.strokes) {
+            const capitalize = (str: string) =>
+              str[0].toUpperCase() + str.substring(1);
+            const directions = ["top", "left", "right", "bottom"];
+            for (const dir of directions) {
+              const computed =
+                computedStyle[("border" + capitalize(dir)) as any];
+              if (computed) {
+                const parsed = computed.match(/^([\d\.]+)px\s*(\w+)\s*(.*)$/);
+                if (parsed) {
+                  let [_match, borderWidth, type, color] = parsed;
+                  if (
+                    borderWidth &&
+                    borderWidth !== "0" &&
+                    type !== "none" &&
+                    color
+                  ) {
+                    const rgb = getRgb(color);
+                    if (rgb) {
+                      const width = ["top", "bottom"].includes(dir)
+                        ? rect.width
+                        : parseFloat(borderWidth);
+                      const height = ["left", "right"].includes(dir)
+                        ? rect.height
+                        : parseFloat(borderWidth);
+                      layers.push({
+                        ref: el,
+                        type: "RECTANGLE",
+                        x:
+                          dir === "left"
+                            ? rect.left - width
+                            : dir === "right"
+                            ? rect.right
+                            : rect.left,
+                        y:
+                          dir === "top"
+                            ? rect.top - height
+                            : dir === "bottom"
+                            ? rect.bottom
+                            : rect.top,
+                        width,
+                        height,
+                        fills: [
                           {
                             type: "SOLID",
-                            color: { r: 0.5, g: 0.5, b: 0.5 },
-                            opacity: 0.5,
-                          },
-                        ],
-                  name: isIconFont
-                    ? `icon${pseudo} (${fontFamily.split(",")[0].trim()})`
-                    : `${el.tagName.toLowerCase()}${pseudo}`,
-                } as WithRef<RectangleNode>;
-
-                // Add border radius if present
-                const borderRadius =
-                  parseFloat(pseudoStyle.borderRadius || "0") || 0;
-                if (borderRadius > 0) {
-                  (pseudoNode as any).cornerRadius = borderRadius;
-                }
-
-                layers.push(pseudoNode);
-              }
-            }
-          }
-        };
-
-        processPseudo("::before");
-        processPseudo("::after");
-
-        const appliedStyles = getAppliedComputedStyles(el);
-        const computedStyle = getComputedStyle(el);
-
-        if (
-          (size(appliedStyles) ||
-            el instanceof HTMLImageElement ||
-            el instanceof HTMLPictureElement ||
-            el instanceof HTMLVideoElement) &&
-          computedStyle.display !== "none"
-        ) {
-          const rect = getBoundingClientRect(el);
-
-          if (rect.width >= 1 && rect.height >= 1) {
-            const fills: Paint[] = [];
-
-            const color = getRgb(computedStyle.backgroundColor);
-
-            if (color) {
-              fills.push({
-                type: "SOLID",
-                color: {
-                  r: color.r,
-                  g: color.g,
-                  b: color.b,
-                },
-                opacity: color.a || 1,
-              } as SolidPaint);
-            }
-
-            const rectNode = {
-              type: "RECTANGLE",
-              ref: el,
-              x: rect.left,
-              y: rect.top,
-              width: rect.width,
-              height: rect.height,
-              fills: fills as any,
-            } as WithRef<RectangleNode>;
-
-            // Apply element opacity
-            const opacity = parseFloat(computedStyle.opacity || "1");
-            if (!isNaN(opacity) && opacity < 1) {
-              (rectNode as any).opacity = opacity;
-            }
-
-            if (computedStyle.border) {
-              const parsed = computedStyle.border.match(
-                /^([\d\.]+)px\s*(\w+)\s*(.*)$/
-              );
-              if (parsed) {
-                let [_match, width, type, color] = parsed;
-                if (width && width !== "0" && type !== "none" && color) {
-                  const rgb = getRgb(color);
-                  if (rgb) {
-                    rectNode.strokes = [
-                      {
-                        type: "SOLID",
-                        color: { r: rgb.r, b: rgb.b, g: rgb.g },
-                        opacity: rgb.a || 1,
-                      },
-                    ];
-                    rectNode.strokeWeight = parseFloat(width);
-                  }
-                }
-              }
-            }
-
-            if (!rectNode.strokes) {
-              const capitalize = (str: string) =>
-                str[0].toUpperCase() + str.substring(1);
-              const directions = ["top", "left", "right", "bottom"];
-              for (const dir of directions) {
-                const computed =
-                  computedStyle[("border" + capitalize(dir)) as any];
-                if (computed) {
-                  const parsed = computed.match(/^([\d\.]+)px\s*(\w+)\s*(.*)$/);
-                  if (parsed) {
-                    let [_match, borderWidth, type, color] = parsed;
-                    if (
-                      borderWidth &&
-                      borderWidth !== "0" &&
-                      type !== "none" &&
-                      color
-                    ) {
-                      const rgb = getRgb(color);
-                      if (rgb) {
-                        const width = ["top", "bottom"].includes(dir)
-                          ? rect.width
-                          : parseFloat(borderWidth);
-                        const height = ["left", "right"].includes(dir)
-                          ? rect.height
-                          : parseFloat(borderWidth);
-                        layers.push({
-                          ref: el,
-                          type: "RECTANGLE",
-                          x:
-                            dir === "left"
-                              ? rect.left - width
-                              : dir === "right"
-                              ? rect.right
-                              : rect.left,
-                          y:
-                            dir === "top"
-                              ? rect.top - height
-                              : dir === "bottom"
-                              ? rect.bottom
-                              : rect.top,
-                          width,
-                          height,
-                          fills: [
-                            {
-                              type: "SOLID",
-                              color: { r: rgb.r, b: rgb.b, g: rgb.g },
-                              opacity: rgb.a || 1,
-                            } as SolidPaint,
-                          ] as any,
-                        } as WithRef<RectangleNode>);
-                      }
+                            color: { r: rgb.r, b: rgb.b, g: rgb.g },
+                            opacity: rgb.a || 1,
+                          } as SolidPaint,
+                        ] as any,
+                      } as WithRef<RectangleNode>);
                     }
                   }
                 }
               }
             }
-
-            if (
-              computedStyle.backgroundImage &&
-              computedStyle.backgroundImage !== "none"
-            ) {
-              // Check for gradient first
-              const gradientFill = parseGradient(computedStyle.backgroundImage);
-              if (gradientFill) {
-                fills.push(gradientFill);
-              } else {
-                // Fall back to image URL
-                const urlMatch = computedStyle.backgroundImage.match(
-                  /url\(['"]?(.*?)['"]?\)/
-                );
-                const url = urlMatch && urlMatch[1];
-                if (url) {
-                  fills.push({
-                    url,
-                    type: "IMAGE",
-                    scaleMode:
-                      computedStyle.backgroundSize === "contain"
-                        ? "FIT"
-                        : "FILL",
-                    imageHash: null,
-                  } as ImagePaint);
-                }
-              }
-            }
-            if (el instanceof SVGSVGElement) {
-              const url = `data:image/svg+xml,${encodeURIComponent(
-                el.outerHTML.replace(/\s+/g, " ")
-              )}`;
-              if (url) {
-                fills.push({
-                  url,
-                  type: "IMAGE",
-                  // TODO: object fit, position
-                  scaleMode: "FILL",
-                  imageHash: null,
-                } as ImagePaint);
-              }
-            }
-            if (el instanceof HTMLImageElement) {
-              const url = (el as HTMLImageElement).currentSrc || el.src;
-              if (url) {
-                fills.push({
-                  url,
-                  type: "IMAGE",
-                  // TODO: object fit, position
-                  scaleMode:
-                    computedStyle.objectFit === "contain" ? "FIT" : "FILL",
-                  imageHash: null,
-                } as ImagePaint);
-              }
-            }
-            // if (el instanceof HTMLPictureElement) {
-            //   const firstSource = el.querySelector("source");
-            //   if (firstSource) {
-            //     const src = getUrl(firstSource.srcset.split(/[,\s]+/g)[0]);
-            //     // TODO: if not absolute
-            //     if (src) {
-            //       fills.push({
-            //         url: src,
-            //         type: "IMAGE",
-            //         // TODO: object fit, position
-            //         scaleMode:
-            //           computedStyle.objectFit === "contain" ? "FIT" : "FILL",
-            //         imageHash: null,
-            //       } as ImagePaint);
-            //     }
-            //   }
-            // }
-            if (el instanceof HTMLVideoElement) {
-              const url = el.poster;
-              if (url) {
-                fills.push({
-                  url,
-                  type: "IMAGE",
-                  // TODO: object fit, position
-                  scaleMode:
-                    computedStyle.objectFit === "contain" ? "FIT" : "FILL",
-                  imageHash: null,
-                } as ImagePaint);
-              }
-            }
-
-            if (computedStyle.boxShadow && computedStyle.boxShadow !== "none") {
-              interface ParsedBoxShadow {
-                inset: boolean;
-                offsetX: number;
-                offsetY: number;
-                blurRadius: number;
-                spreadRadius: number;
-                color: string;
-              }
-              const LENGTH_REG = /^[0-9]+[a-zA-Z%]+?$/;
-              const toNum = (v: string): number => {
-                if (!/px$/.test(v) && v !== "0") return 0;
-                const n = parseFloat(v);
-                return !isNaN(n) ? n : 0;
-              };
-              const isLength = (v: string) => v === "0" || LENGTH_REG.test(v);
-              const parseValue = (str: string): ParsedBoxShadow => {
-                if (str.startsWith("rgb")) {
-                  const colorMatch = str.match(/(rgba?\(.+?\))(.+)/);
-                  if (colorMatch) {
-                    str = (colorMatch[2] + " " + colorMatch[1]).trim();
-                  }
-                }
-
-                const PARTS_REG = /\s(?![^(]*\))/;
-                const parts = str.split(PARTS_REG);
-                const inset = parts.includes("inset");
-                const last = parts.slice(-1)[0];
-                const color = !isLength(last) ? last : "rgba(0, 0, 0, 1)";
-
-                const nums = parts
-                  .filter((n) => n !== "inset")
-                  .filter((n) => n !== color)
-                  .map(toNum);
-
-                const [offsetX, offsetY, blurRadius, spreadRadius] = nums;
-
-                return {
-                  inset,
-                  offsetX: offsetX || 0,
-                  offsetY: offsetY || 0,
-                  blurRadius: blurRadius || 0,
-                  spreadRadius: spreadRadius || 0,
-                  color,
-                };
-              };
-
-              // Split multiple box shadows by comma (but not inside rgba())
-              const shadowStrings =
-                computedStyle.boxShadow.split(/,(?![^(]*\))/);
-              const effects: any[] = [];
-
-              for (const shadowStr of shadowStrings) {
-                const parsed = parseValue(shadowStr.trim());
-                const color = getRgb(parsed.color);
-                if (color) {
-                  effects.push({
-                    color,
-                    type: parsed.inset ? "INNER_SHADOW" : "DROP_SHADOW",
-                    radius: parsed.blurRadius,
-                    spread: parsed.spreadRadius,
-                    blendMode: "NORMAL",
-                    visible: true,
-                    offset: {
-                      x: parsed.offsetX,
-                      y: parsed.offsetY,
-                    },
-                  });
-                }
-              }
-
-              if (effects.length > 0) {
-                rectNode.effects = effects;
-              }
-            }
-
-            const borderTopLeftRadius = parseUnits(
-              computedStyle.borderTopLeftRadius
-            );
-            if (borderTopLeftRadius) {
-              rectNode.topLeftRadius = borderTopLeftRadius.value;
-            }
-            const borderTopRightRadius = parseUnits(
-              computedStyle.borderTopRightRadius
-            );
-            if (borderTopRightRadius) {
-              rectNode.topRightRadius = borderTopRightRadius.value;
-            }
-            const borderBottomRightRadius = parseUnits(
-              computedStyle.borderBottomRightRadius
-            );
-            if (borderBottomRightRadius) {
-              rectNode.bottomRightRadius = borderBottomRightRadius.value;
-            }
-            const borderBottomLeftRadius = parseUnits(
-              computedStyle.borderBottomLeftRadius
-            );
-            if (borderBottomLeftRadius) {
-              rectNode.bottomLeftRadius = borderBottomLeftRadius.value;
-            }
-
-            layers.push(rectNode);
           }
+
+          if (
+            computedStyle.backgroundImage &&
+            computedStyle.backgroundImage !== "none"
+          ) {
+            // Check for gradient first
+            const gradientFill = parseGradient(computedStyle.backgroundImage);
+            if (gradientFill) {
+              fills.push(gradientFill);
+            } else {
+              // Fall back to image URL
+              const urlMatch = computedStyle.backgroundImage.match(
+                /url\(['"]?(.*?)['"]?\)/
+              );
+              const url = urlMatch && urlMatch[1];
+              if (url) {
+                fills.push({
+                  url,
+                  type: "IMAGE",
+                  scaleMode:
+                    computedStyle.backgroundSize === "contain" ? "FIT" : "FILL",
+                  imageHash: null,
+                } as ImagePaint);
+              }
+            }
+          }
+          if (el instanceof SVGSVGElement) {
+            const url = `data:image/svg+xml,${encodeURIComponent(
+              el.outerHTML.replace(/\s+/g, " ")
+            )}`;
+            if (url) {
+              fills.push({
+                url,
+                type: "IMAGE",
+                // TODO: object fit, position
+                scaleMode: "FILL",
+                imageHash: null,
+              } as ImagePaint);
+            }
+          }
+          if (el instanceof HTMLImageElement) {
+            const url = (el as HTMLImageElement).currentSrc || el.src;
+            if (url) {
+              fills.push({
+                url,
+                type: "IMAGE",
+                // TODO: object fit, position
+                scaleMode:
+                  computedStyle.objectFit === "contain" ? "FIT" : "FILL",
+                imageHash: null,
+              } as ImagePaint);
+            }
+          }
+          // if (el instanceof HTMLPictureElement) {
+          //   const firstSource = el.querySelector("source");
+          //   if (firstSource) {
+          //     const src = getUrl(firstSource.srcset.split(/[,\s]+/g)[0]);
+          //     // TODO: if not absolute
+          //     if (src) {
+          //       fills.push({
+          //         url: src,
+          //         type: "IMAGE",
+          //         // TODO: object fit, position
+          //         scaleMode:
+          //           computedStyle.objectFit === "contain" ? "FIT" : "FILL",
+          //         imageHash: null,
+          //       } as ImagePaint);
+          //     }
+          //   }
+          // }
+          if (el instanceof HTMLVideoElement) {
+            const url = el.poster;
+            if (url) {
+              fills.push({
+                url,
+                type: "IMAGE",
+                // TODO: object fit, position
+                scaleMode:
+                  computedStyle.objectFit === "contain" ? "FIT" : "FILL",
+                imageHash: null,
+              } as ImagePaint);
+            }
+          }
+
+          if (computedStyle.boxShadow && computedStyle.boxShadow !== "none") {
+            interface ParsedBoxShadow {
+              inset: boolean;
+              offsetX: number;
+              offsetY: number;
+              blurRadius: number;
+              spreadRadius: number;
+              color: string;
+            }
+            const LENGTH_REG = /^[0-9]+[a-zA-Z%]+?$/;
+            const toNum = (v: string): number => {
+              if (!/px$/.test(v) && v !== "0") return 0;
+              const n = parseFloat(v);
+              return !isNaN(n) ? n : 0;
+            };
+            const isLength = (v: string) => v === "0" || LENGTH_REG.test(v);
+            const parseValue = (str: string): ParsedBoxShadow => {
+              if (str.startsWith("rgb")) {
+                const colorMatch = str.match(/(rgba?\(.+?\))(.+)/);
+                if (colorMatch) {
+                  str = (colorMatch[2] + " " + colorMatch[1]).trim();
+                }
+              }
+
+              const PARTS_REG = /\s(?![^(]*\))/;
+              const parts = str.split(PARTS_REG);
+              const inset = parts.includes("inset");
+              const last = parts.slice(-1)[0];
+              const color = !isLength(last) ? last : "rgba(0, 0, 0, 1)";
+
+              const nums = parts
+                .filter((n) => n !== "inset")
+                .filter((n) => n !== color)
+                .map(toNum);
+
+              const [offsetX, offsetY, blurRadius, spreadRadius] = nums;
+
+              return {
+                inset,
+                offsetX: offsetX || 0,
+                offsetY: offsetY || 0,
+                blurRadius: blurRadius || 0,
+                spreadRadius: spreadRadius || 0,
+                color,
+              };
+            };
+
+            // Split multiple box shadows by comma (but not inside rgba())
+            const shadowStrings = computedStyle.boxShadow.split(/,(?![^(]*\))/);
+            const effects: any[] = [];
+
+            for (const shadowStr of shadowStrings) {
+              const parsed = parseValue(shadowStr.trim());
+              const color = getRgb(parsed.color);
+              if (color) {
+                effects.push({
+                  color,
+                  type: parsed.inset ? "INNER_SHADOW" : "DROP_SHADOW",
+                  radius: parsed.blurRadius,
+                  spread: parsed.spreadRadius,
+                  blendMode: "NORMAL",
+                  visible: true,
+                  offset: {
+                    x: parsed.offsetX,
+                    y: parsed.offsetY,
+                  },
+                });
+              }
+            }
+
+            if (effects.length > 0) {
+              rectNode.effects = effects;
+            }
+          }
+
+          const borderTopLeftRadius = parseUnits(
+            computedStyle.borderTopLeftRadius
+          );
+          if (borderTopLeftRadius) {
+            rectNode.topLeftRadius = borderTopLeftRadius.value;
+          }
+          const borderTopRightRadius = parseUnits(
+            computedStyle.borderTopRightRadius
+          );
+          if (borderTopRightRadius) {
+            rectNode.topRightRadius = borderTopRightRadius.value;
+          }
+          const borderBottomRightRadius = parseUnits(
+            computedStyle.borderBottomRightRadius
+          );
+          if (borderBottomRightRadius) {
+            rectNode.bottomRightRadius = borderBottomRightRadius.value;
+          }
+          const borderBottomLeftRadius = parseUnits(
+            computedStyle.borderBottomLeftRadius
+          );
+          if (borderBottomLeftRadius) {
+            rectNode.bottomLeftRadius = borderBottomLeftRadius.value;
+          }
+
+          layers.push(rectNode);
         }
-      });
-    }
+      }
+    });
 
     const textNodes = textNodesUnder(el);
 
@@ -1178,8 +1174,16 @@ export function htmlToFigma(
       traverse(root, (layer, originalParent) => {
         // const node = layer.ref!;
         const node = layer.ref;
-        let parentElement: Element | null =
-          (node && (node as Element).parentElement) || null;
+        let parentElement: Element | null = null;
+        if (node && node instanceof Element) {
+          parentElement = node.parentElement;
+          if (!parentElement) {
+            const rootNode = node.getRootNode();
+            if (rootNode instanceof ShadowRoot) {
+              parentElement = rootNode.host;
+            }
+          }
+        }
         do {
           if (parentElement === document.body) {
             break;

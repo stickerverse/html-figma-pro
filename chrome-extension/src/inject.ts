@@ -18,7 +18,7 @@ const autoScroll = async () => {
   notification.style.borderRadius = "5px";
   notification.style.zIndex = "999999";
   notification.style.fontFamily = "sans-serif";
-  notification.innerText = "Scrolling to caption lazy-loaded content...";
+  notification.innerText = "Scrolling to capture lazy-loaded content...";
   document.body.appendChild(notification);
 
   // Scroll down in steps
