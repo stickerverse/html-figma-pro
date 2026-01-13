@@ -41,16 +41,38 @@ const layers = htmlToFigma(document.body);
 
 Importing HTML layers to Figma is a best-effort process. Even getting 90% there can save you a ton of time, only having to clean up a few things.
 
-A few known limitations:
+### Remaining Limitations:
 
-- not all element types are supported (e.g. iframe, pseudoelements)
-- not all CSS properties are supported or fully supported
-- not all types of media are supported (video, animated gifs, etc)
-- all fonts have to be uploaded to Figma or a best effort fallback will be used
+- Cross-origin iframe content cannot be captured (security restriction)
+- Some CSS properties may have limited support (clip-path, advanced filters)
+- Animated content (videos, animated gifs) captured as static images
+- Fonts must be uploaded to Figma for exact matching
+
+## Recent Improvements ✨
+
+### Newly Supported Features:
+- ✅ **Gradient backgrounds** (linear-gradient, radial-gradient)
+- ✅ **Pseudo-elements** (::before, ::after with backgrounds)
+- ✅ **iframes** (captured as placeholder rectangles)
+- ✅ **Element opacity** (properly transferred to Figma layers)
+- ✅ **Multiple box shadows** (including inner/inset shadows)
+- ✅ **Font weight & style** (bold, italic, weight values 100-900)
+- ✅ **Text shadows** (captured in styles)
+- ✅ **CSS transforms** (captured in properties)
+- ✅ **CSS filters** (blur, brightness, etc.)
+- ✅ **Blend modes** (mix-blend-mode)
+
+### CSS Properties Now Captured:
+- opacity, transform, filter
+- text-shadow, font-weight, font-style
+- mix-blend-mode, clip-path
+- All gradient variations
 
 If you find any issues or have feedback at all please make an issue.
 
 ## TODO
 
-- Support code import
-- Support Figma components
+- [ ] Support code import (Figma to Code)
+- [ ] Support Figma components
+- [ ] Better font matching with fallback system
+- [ ] Advanced filter effects

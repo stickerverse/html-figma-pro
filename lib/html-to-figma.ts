@@ -114,6 +114,13 @@ export function htmlToFigma(
       "backgroundImage",
       "borderColor",
       "boxShadow",
+      "transform",
+      "filter",
+      "textShadow",
+      "fontWeight",
+      "fontStyle",
+      "mixBlendMode",
+      "clipPath",
     ];
 
     const color = styles.color;
@@ -232,6 +239,150 @@ export function htmlToFigma(
     return null;
   };
 
+  // Internal RGB parser for gradient parsing
+  function getRgbInternal(colorString?: string | null) {
+    if (!colorString) return null;
+    const rgbMatch = colorString.match(
+      /rgba?\(([\d\.]+),\s*([\d\.]+),\s*([\d\.]+)(?:,\s*([\d\.]+))?\)/
+    );
+    if (rgbMatch) {
+      return {
+        r: parseInt(rgbMatch[1]) / 255,
+        g: parseInt(rgbMatch[2]) / 255,
+        b: parseInt(rgbMatch[3]) / 255,
+        a: rgbMatch[4] ? parseFloat(rgbMatch[4]) : 1,
+      };
+    }
+    const hexMatch = colorString.match(/^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/);
+    if (hexMatch) {
+      let hex = hexMatch[1];
+      if (hex.length === 3) {
+        hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+      }
+      return {
+        r: parseInt(hex.substr(0, 2), 16) / 255,
+        g: parseInt(hex.substr(2, 2), 16) / 255,
+        b: parseInt(hex.substr(4, 2), 16) / 255,
+        a: 1,
+      };
+    }
+    return null;
+  }
+
+  interface ColorStop {
+    color: { r: number; g: number; b: number; a: number };
+    position: number;
+  }
+
+  // Parse CSS linear/radial gradients
+  const parseGradient = (gradientStr: string): any | null => {
+    if (!gradientStr || gradientStr === "none") return null;
+
+    const linearMatch = gradientStr.match(/linear-gradient\(([^)]+)\)/);
+    if (linearMatch) {
+      const parts = linearMatch[1].split(/,(?![^(]*\))/);
+      let angle = 180;
+      let colorStops: string[] = [];
+
+      const firstPart = parts[0].trim();
+      if (firstPart.includes("deg")) {
+        angle = parseFloat(firstPart);
+        colorStops = parts.slice(1);
+      } else if (firstPart.startsWith("to ")) {
+        const dir = firstPart.replace("to ", "");
+        const dirMap: { [k: string]: number } = {
+          top: 0,
+          right: 90,
+          bottom: 180,
+          left: 270,
+          "top right": 45,
+          "bottom right": 135,
+          "bottom left": 225,
+          "top left": 315,
+        };
+        angle = dirMap[dir] || 180;
+        colorStops = parts.slice(1);
+      } else {
+        colorStops = parts;
+      }
+
+      const stops: ColorStop[] = [];
+      colorStops.forEach((stop, i) => {
+        const m = stop.trim().match(/(.*?)\s*(\d+%)?$/);
+        if (m) {
+          const rgb = getRgbInternal(m[1].trim());
+          const pos = m[2]
+            ? parseFloat(m[2]) / 100
+            : i / Math.max(colorStops.length - 1, 1);
+          if (rgb) stops.push({ color: { ...rgb }, position: pos });
+        }
+      });
+
+      if (stops.length >= 2) {
+        const rad = ((angle - 90) * Math.PI) / 180;
+        return {
+          type: "GRADIENT_LINEAR",
+          gradientTransform: [
+            [Math.cos(rad), Math.sin(rad), 0.5],
+            [-Math.sin(rad), Math.cos(rad), 0.5],
+          ],
+          gradientStops: stops,
+        };
+      }
+    }
+
+    const radialMatch = gradientStr.match(/radial-gradient\(([^)]+)\)/);
+    if (radialMatch) {
+      const parts = radialMatch[1].split(/,(?![^(]*\))/);
+      const colorStops = parts.length > 1 ? parts.slice(1) : parts;
+
+      const stops: ColorStop[] = [];
+      colorStops.forEach((stop, i) => {
+        const m = stop.trim().match(/(.*?)\s*(\d+%)?$/);
+        if (m) {
+          const rgb = getRgbInternal(m[1].trim());
+          const pos = m[2]
+            ? parseFloat(m[2]) / 100
+            : i / Math.max(colorStops.length - 1, 1);
+          if (rgb) stops.push({ color: { ...rgb }, position: pos });
+        }
+      });
+
+      if (stops.length >= 2) {
+        return {
+          type: "GRADIENT_RADIAL",
+          gradientTransform: [
+            [1, 0, 0.5],
+            [0, 1, 0.5],
+          ],
+          gradientStops: stops,
+        };
+      }
+    }
+
+    return null;
+  };
+
+  // Map font weight string to numeric value
+  const parseFontWeight = (weight: string): number => {
+    const weightMap: { [k: string]: number } = {
+      normal: 400,
+      bold: 700,
+      bolder: 700,
+      lighter: 300,
+      "100": 100,
+      "200": 200,
+      "300": 300,
+      "400": 400,
+      "500": 500,
+      "600": 600,
+      "700": 700,
+      "800": 800,
+      "900": 900,
+    };
+    return weightMap[weight] || 400;
+  };
+
   function isHidden(element: Element) {
     let el: Element | null = element;
     do {
@@ -259,9 +410,8 @@ export function htmlToFigma(
     for (const use of Array.from(el.querySelectorAll("use"))) {
       try {
         const symbolSelector = use.href.baseVal;
-        const symbol: SVGSymbolElement | null = document.querySelector(
-          symbolSelector
-        );
+        const symbol: SVGSymbolElement | null =
+          document.querySelector(symbolSelector);
         if (symbol) {
           use.outerHTML = symbol.innerHTML;
         }
@@ -272,7 +422,8 @@ export function htmlToFigma(
 
     const getShadowEls = (el: Element): Element[] =>
       Array.from(
-        (el.shadowRoot && el.shadowRoot.querySelectorAll("*")) || ([] as Element[])
+        (el.shadowRoot && el.shadowRoot.querySelectorAll("*")) ||
+          ([] as Element[])
       ).reduce((memo, el) => {
         memo.push(el);
         memo.push(...getShadowEls(el));
@@ -318,6 +469,95 @@ export function htmlToFigma(
           return;
         }
 
+        // Handle iframes - capture as placeholder
+        if (el instanceof HTMLIFrameElement) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width >= 1 && rect.height >= 1) {
+            layers.push({
+              type: "RECTANGLE",
+              ref: el,
+              x: Math.round(rect.left),
+              y: Math.round(rect.top),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              fills: [
+                {
+                  type: "SOLID",
+                  color: { r: 0.9, g: 0.9, b: 0.9 },
+                  opacity: 1,
+                },
+              ] as any,
+              strokes: [
+                {
+                  type: "SOLID",
+                  color: { r: 0.8, g: 0.8, b: 0.8 },
+                  opacity: 1,
+                },
+              ],
+              strokeWeight: 1,
+              name: `iframe: ${el.src || "embedded content"}`,
+            } as any);
+          }
+          return;
+        }
+
+        // Handle pseudo-elements (::before and ::after)
+        const processPseudo = (pseudo: "::before" | "::after") => {
+          const pseudoStyle = getComputedStyle(el, pseudo);
+          const content = pseudoStyle.content;
+          if (
+            content &&
+            content !== "none" &&
+            content !== '""' &&
+            content !== "''"
+          ) {
+            const elRect = el.getBoundingClientRect();
+            const width = parseFloat(pseudoStyle.width || "0") || 0;
+            const height = parseFloat(pseudoStyle.height || "0") || 0;
+
+            if (width >= 1 && height >= 1) {
+              const pseudoFills: Paint[] = [];
+              const bgColor = getRgbInternal(pseudoStyle.backgroundColor);
+              if (bgColor && bgColor.a > 0) {
+                pseudoFills.push({
+                  type: "SOLID",
+                  color: { r: bgColor.r, g: bgColor.g, b: bgColor.b },
+                  opacity: bgColor.a,
+                } as SolidPaint);
+              }
+
+              // Check for gradient
+              if (
+                pseudoStyle.backgroundImage &&
+                pseudoStyle.backgroundImage !== "none"
+              ) {
+                const gradFill = parseGradient(pseudoStyle.backgroundImage);
+                if (gradFill) pseudoFills.push(gradFill);
+              }
+
+              if (pseudoFills.length > 0) {
+                const pseudoNode = {
+                  type: "RECTANGLE",
+                  ref: el,
+                  x: Math.round(elRect.left),
+                  y:
+                    pseudo === "::before"
+                      ? Math.round(elRect.top - height)
+                      : Math.round(elRect.bottom),
+                  width: Math.round(width || elRect.width),
+                  height: Math.round(height),
+                  fills: pseudoFills as any,
+                  name: `${el.tagName.toLowerCase()}${pseudo}`,
+                } as WithRef<RectangleNode>;
+                layers.push(pseudoNode);
+              }
+            }
+          }
+        };
+
+        processPseudo("::before");
+        processPseudo("::after");
+
         const appliedStyles = getAppliedComputedStyles(el);
         const computedStyle = getComputedStyle(el);
 
@@ -356,6 +596,12 @@ export function htmlToFigma(
               height: Math.round(rect.height),
               fills: fills as any,
             } as WithRef<RectangleNode>;
+
+            // Apply element opacity
+            const opacity = parseFloat(computedStyle.opacity || "1");
+            if (!isNaN(opacity) && opacity < 1) {
+              (rectNode as any).opacity = opacity;
+            }
 
             if (computedStyle.border) {
               const parsed = computedStyle.border.match(
@@ -440,19 +686,27 @@ export function htmlToFigma(
               computedStyle.backgroundImage &&
               computedStyle.backgroundImage !== "none"
             ) {
-              const urlMatch = computedStyle.backgroundImage.match(
-                /url\(['"]?(.*?)['"]?\)/
-              );
-              const url = urlMatch && urlMatch[1];
-              if (url) {
-                fills.push({
-                  url,
-                  type: "IMAGE",
-                  // TODO: backround size, position
-                  scaleMode:
-                    computedStyle.backgroundSize === "contain" ? "FIT" : "FILL",
-                  imageHash: null,
-                } as ImagePaint);
+              // Check for gradient first
+              const gradientFill = parseGradient(computedStyle.backgroundImage);
+              if (gradientFill) {
+                fills.push(gradientFill);
+              } else {
+                // Fall back to image URL
+                const urlMatch = computedStyle.backgroundImage.match(
+                  /url\(['"]?(.*?)['"]?\)/
+                );
+                const url = urlMatch && urlMatch[1];
+                if (url) {
+                  fills.push({
+                    url,
+                    type: "IMAGE",
+                    scaleMode:
+                      computedStyle.backgroundSize === "contain"
+                        ? "FIT"
+                        : "FILL",
+                    imageHash: null,
+                  } as ImagePaint);
+                }
               }
             }
             if (el instanceof SVGSVGElement) {
@@ -524,17 +778,13 @@ export function htmlToFigma(
               }
               const LENGTH_REG = /^[0-9]+[a-zA-Z%]+?$/;
               const toNum = (v: string): number => {
-                // if (!/px$/.test(v) && v !== '0') return v;
                 if (!/px$/.test(v) && v !== "0") return 0;
                 const n = parseFloat(v);
-                // return !isNaN(n) ? n : v;
                 return !isNaN(n) ? n : 0;
               };
               const isLength = (v: string) => v === "0" || LENGTH_REG.test(v);
               const parseValue = (str: string): ParsedBoxShadow => {
-                // TODO: this is broken for multiple box shadows
                 if (str.startsWith("rgb")) {
-                  // Werid computed style thing that puts the color in the front not back
                   const colorMatch = str.match(/(rgba?\(.+?\))(.+)/);
                   if (colorMatch) {
                     str = (colorMatch[2] + " " + colorMatch[1]).trim();
@@ -556,30 +806,40 @@ export function htmlToFigma(
 
                 return {
                   inset,
-                  offsetX,
-                  offsetY,
-                  blurRadius,
-                  spreadRadius,
+                  offsetX: offsetX || 0,
+                  offsetY: offsetY || 0,
+                  blurRadius: blurRadius || 0,
+                  spreadRadius: spreadRadius || 0,
                   color,
                 };
               };
 
-              const parsed = parseValue(computedStyle.boxShadow);
-              const color = getRgb(parsed.color);
-              if (color) {
-                rectNode.effects = [
-                  {
+              // Split multiple box shadows by comma (but not inside rgba())
+              const shadowStrings =
+                computedStyle.boxShadow.split(/,(?![^(]*\))/);
+              const effects: any[] = [];
+
+              for (const shadowStr of shadowStrings) {
+                const parsed = parseValue(shadowStr.trim());
+                const color = getRgb(parsed.color);
+                if (color) {
+                  effects.push({
                     color,
-                    type: "DROP_SHADOW",
+                    type: parsed.inset ? "INNER_SHADOW" : "DROP_SHADOW",
                     radius: parsed.blurRadius,
+                    spread: parsed.spreadRadius,
                     blendMode: "NORMAL",
                     visible: true,
                     offset: {
                       x: parsed.offsetX,
                       y: parsed.offsetY,
                     },
-                  } as any,
-                ];
+                  });
+                }
+              }
+
+              if (effects.length > 0) {
+                rectNode.effects = effects;
               }
             }
 
@@ -724,12 +984,28 @@ export function htmlToFigma(
             (textNode as any).fontFamily = computedStyles.fontFamily;
           }
 
+          // Capture font weight
+          if (computedStyles.fontWeight) {
+            (textNode as any).fontWeight = parseFontWeight(
+              computedStyles.fontWeight
+            );
+          }
+
+          // Capture font style (italic, oblique)
+          if (
+            computedStyles.fontStyle &&
+            computedStyles.fontStyle !== "normal"
+          ) {
+            (textNode as any).fontStyle = computedStyles.fontStyle;
+          }
+
           if (computedStyles.textDecoration) {
             if (
               computedStyles.textDecoration === "underline" ||
               computedStyles.textDecoration === "strikethrough"
             ) {
-              textNode.textDecoration = computedStyles.textDecoration.toUpperCase() as any;
+              textNode.textDecoration =
+                computedStyles.textDecoration.toUpperCase() as any;
             }
           }
           if (computedStyles.textAlign) {
@@ -738,7 +1014,8 @@ export function htmlToFigma(
                 computedStyles.textAlign
               )
             ) {
-              textNode.textAlignHorizontal = computedStyles.textAlign.toUpperCase() as any;
+              textNode.textAlignHorizontal =
+                computedStyles.textAlign.toUpperCase() as any;
             }
           }
 
