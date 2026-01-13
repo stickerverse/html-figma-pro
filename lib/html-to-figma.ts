@@ -114,6 +114,9 @@ export function htmlToFigma(
       "backgroundImage",
       "borderColor",
       "boxShadow",
+      "fontWeight",
+      "fontStyle",
+      "zIndex",
     ];
 
     const color = styles.color;
@@ -137,6 +140,7 @@ export function htmlToFigma(
       borderStyle: "none",
       boxShadow: "none",
       fontWeight: "400",
+      fontStyle: "normal",
       textAlign: "start",
       justifyContent: "normal",
       alignItems: "normal",
@@ -295,15 +299,25 @@ export function htmlToFigma(
 
           // TODO: pull in CSS/computed styles
           // TODO: may need to pull in layer styles too like shadow, bg color, etc
-          layers.push({
+          const svgStyles = getAppliedComputedStyles(el);
+          const svgNode: any = {
             type: "SVG",
             ref: el,
             svg: el.outerHTML,
-            x: Math.round(rect.left),
-            y: Math.round(rect.top),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
-          });
+            x: rect.left,
+            y: rect.top,
+            width: rect.width,
+            height: rect.height,
+          };
+
+          // Capture z-index for proper layer ordering
+          if (svgStyles.zIndex && svgStyles.zIndex !== "auto") {
+            svgNode.zIndex = parseInt(svgStyles.zIndex);
+          } else {
+            svgNode.zIndex = 0;
+          }
+
+          layers.push(svgNode);
           return;
         }
         // Sub SVG Eleemnt
@@ -350,10 +364,10 @@ export function htmlToFigma(
             const rectNode = {
               type: "RECTANGLE",
               ref: el,
-              x: Math.round(rect.left),
-              y: Math.round(rect.top),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height),
+              x: rect.left,
+              y: rect.top,
+              width: rect.width,
+              height: rect.height,
               fills: fills as any,
             } as WithRef<RectangleNode>;
 
@@ -373,7 +387,7 @@ export function htmlToFigma(
                         opacity: rgb.a || 1,
                       },
                     ];
-                    rectNode.strokeWeight = Math.round(parseFloat(width));
+                    rectNode.strokeWeight = parseFloat(width);
                   }
                 }
               }
@@ -608,6 +622,21 @@ export function htmlToFigma(
               rectNode.bottomLeftRadius = borderBottomLeftRadius.value;
             }
 
+            // Apply opacity if specified
+            if (appliedStyles.opacity) {
+              const opacity = parseFloat(appliedStyles.opacity);
+              if (!isNaN(opacity)) {
+                rectNode.opacity = opacity;
+              }
+            }
+
+            // Capture z-index for proper layer ordering
+            if (appliedStyles.zIndex && appliedStyles.zIndex !== "auto") {
+              (rectNode as any).zIndex = parseInt(appliedStyles.zIndex);
+            } else {
+              (rectNode as any).zIndex = 0;
+            }
+
             layers.push(rectNode);
           }
         }
@@ -663,11 +692,11 @@ export function htmlToFigma(
           }
 
           const textNode = {
-            x: Math.round(rect.left),
+            x: rect.left,
             ref: node,
-            y: Math.round(rect.top),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
+            y: rect.top,
+            width: rect.width,
+            height: rect.height,
             type: "TEXT",
             characters: node.textContent.trim().replace(/\s+/g, " ") || "",
           } as WithRef<TextNode>;
@@ -717,11 +746,17 @@ export function htmlToFigma(
 
           const fontSize = parseUnits(computedStyles.fontSize);
           if (fontSize) {
-            textNode.fontSize = Math.round(fontSize.value);
+            textNode.fontSize = fontSize.value;
           }
           if (computedStyles.fontFamily) {
             // const font = computedStyles.fontFamily.split(/\s*,\s*/);
             (textNode as any).fontFamily = computedStyles.fontFamily;
+          }
+          if (computedStyles.fontWeight) {
+            (textNode as any).fontWeight = computedStyles.fontWeight;
+          }
+          if (computedStyles.fontStyle) {
+            (textNode as any).fontStyle = computedStyles.fontStyle;
           }
 
           if (computedStyles.textDecoration) {
@@ -742,6 +777,22 @@ export function htmlToFigma(
             }
           }
 
+          // Apply opacity if specified (need to get appliedStyles for text node parent)
+          const appliedTextStyles = getAppliedComputedStyles(parent);
+          if (appliedTextStyles.opacity) {
+            const opacity = parseFloat(appliedTextStyles.opacity);
+            if (!isNaN(opacity)) {
+              textNode.opacity = opacity;
+            }
+          }
+
+          // Capture z-index for proper layer ordering
+          if (appliedTextStyles.zIndex && appliedTextStyles.zIndex !== "auto") {
+            (textNode as any).zIndex = parseInt(appliedTextStyles.zIndex);
+          } else {
+            (textNode as any).zIndex = 0;
+          }
+
           layers.push(textNode);
         }
       }
@@ -751,8 +802,8 @@ export function htmlToFigma(
   // TODO: send frame: { children: []}
   const root = {
     type: "FRAME",
-    width: Math.round(window.innerWidth),
-    height: Math.round(document.documentElement.scrollHeight),
+    width: window.innerWidth,
+    height: document.documentElement.scrollHeight,
     x: 0,
     y: 0,
     ref: document.body,
@@ -1179,6 +1230,14 @@ export function htmlToFigma(
       });
     });
   }
+
+  // Sort layers by z-index for proper stacking order
+  // Lower z-index values should be rendered first (bottom layers)
+  layers.sort((a, b) => {
+    const aZ = (a as any).zIndex || 0;
+    const bZ = (b as any).zIndex || 0;
+    return aZ - bZ;
+  });
 
   // TODO: arg can be passed in
   const MAKE_TREE = useFrames;

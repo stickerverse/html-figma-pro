@@ -56,12 +56,69 @@ const normalizeName = (str: string) =>
 
 const defaultFont = { family: "Roboto", style: "Regular" };
 
+// Maps CSS font-weight and font-style to Figma font style names
+function mapFontWeightAndStyleToFigmaStyle(
+  weight: string | number,
+  style: string
+): string {
+  const numericWeight =
+    typeof weight === "string" ? parseInt(weight) : weight;
+  const isItalic = style === "italic" || style === "oblique";
+
+  // Map weight to style name
+  if (numericWeight <= 100) {
+    return isItalic ? "Thin Italic" : "Thin";
+  } else if (numericWeight <= 200) {
+    return isItalic ? "ExtraLight Italic" : "ExtraLight";
+  } else if (numericWeight <= 300) {
+    return isItalic ? "Light Italic" : "Light";
+  } else if (numericWeight <= 400) {
+    return isItalic ? "Italic" : "Regular";
+  } else if (numericWeight <= 500) {
+    return isItalic ? "Medium Italic" : "Medium";
+  } else if (numericWeight <= 600) {
+    return isItalic ? "SemiBold Italic" : "SemiBold";
+  } else if (numericWeight <= 700) {
+    return isItalic ? "Bold Italic" : "Bold";
+  } else if (numericWeight <= 800) {
+    return isItalic ? "ExtraBold Italic" : "ExtraBold";
+  } else {
+    return isItalic ? "Black Italic" : "Black";
+  }
+}
+
 // TODO: keep list of fonts not found
-async function getMatchingFont(fontStr: string, availableFonts: Font[]) {
+async function getMatchingFont(
+  fontStr: string,
+  availableFonts: Font[],
+  weight: string | number = "400",
+  style: string = "normal"
+) {
   const familySplit = fontStr.split(/\s*,\s*/);
+  const desiredStyle = mapFontWeightAndStyleToFigmaStyle(weight, style);
 
   for (const family of familySplit) {
     const normalized = normalizeName(family);
+
+    // First, try to find exact match with family + style
+    for (const availableFont of availableFonts) {
+      const normalizedAvailable = normalizeName(availableFont.fontName.family);
+      if (
+        normalizedAvailable === normalized &&
+        availableFont.fontName.style === desiredStyle
+      ) {
+        const cacheKey = `${normalized}:${desiredStyle}`;
+        const cached = fontCache[cacheKey];
+        if (cached) {
+          return cached;
+        }
+        await figma.loadFontAsync(availableFont.fontName);
+        fontCache[cacheKey] = availableFont.fontName;
+        return availableFont.fontName;
+      }
+    }
+
+    // Fallback: try to find any style of the family
     for (const availableFont of availableFonts) {
       const normalizedAvailable = normalizeName(availableFont.fontName.family);
       if (normalizedAvailable === normalized) {
@@ -271,9 +328,7 @@ figma.ui.onmessage = async (msg) => {
   }
 
   if (msg.type === "import") {
-    const availableFonts = (await figma.listAvailableFontsAsync()).filter(
-      (font) => font.fontName.style === "Regular"
-    );
+    const availableFonts = await figma.listAvailableFontsAsync();
     await figma.loadFontAsync(defaultFont);
     const { data } = msg;
     const { layers } = data;
@@ -321,17 +376,25 @@ figma.ui.onmessage = async (msg) => {
           } else if (layer.type == "TEXT") {
             const text = figma.createText();
             if (layer.fontFamily) {
-              const cached = fontCache[layer.fontFamily];
+              const weight = layer.fontWeight || "400";
+              const style = layer.fontStyle || "normal";
+              const cacheKey = `${layer.fontFamily}:${weight}:${style}`;
+              const cached = fontCache[cacheKey];
               if (cached) {
                 text.fontName = cached;
               } else {
                 const family = await getMatchingFont(
                   layer.fontFamily || "",
-                  availableFonts
+                  availableFonts,
+                  weight,
+                  style
                 );
                 text.fontName = family;
+                fontCache[cacheKey] = family;
               }
               delete layer.fontFamily;
+              delete layer.fontWeight;
+              delete layer.fontStyle;
             }
             assign(text, layer);
             layer.ref = text;
