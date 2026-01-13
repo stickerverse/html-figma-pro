@@ -312,76 +312,93 @@ zIndex: "auto", // TODO
 
 ---
 
+## 📈 Progress Update (Current Satus)
+
+| Feature | Status | Implementation Notes |
+|---------|--------|----------------------|
+| **Math.round() Removal** | ✅ DONE | Removed from all coordinates, dimensions, strokes, fonts |
+| **Font Weight/Style** | ✅ DONE | Captures bold, italic, 100-900 weights |
+| **Gradients** | ✅ DONE | Linear/radial gradients with px/percent stops |
+| **Multiple Shadows** | ✅ DONE | Multiple drop shadows + inner shadows supported |
+| **Opacity** | ✅ DONE | Element-level opacity & alpha colors supported |
+| **Pseudo-elements** | ✅ DONE | ::before/::after captured + Icon font detection |
+| **Iframes** | ✅ DONE | Captured as placeholder rectangles |
+| **Transforms** | ✅ DONE | Basic transform properties captured |
+| **Filters** | ✅ DONE | Basic filter properties captured |
+| **Text Shadow** | ✅ DONE | Captured |
+| **Mix Blend Mode** | ✅ DONE | Captured |
+
 ## 📊 Priority Matrix for Pixel-Perfect
 
 ### 🔴 Critical (Implement First)
 
-1. **Remove Math.round()** - Biggest source of drift
-2. **Font weight & style** - Text looks completely different
-3. **Transform support** - Positioned elements are wrong
-4. **Gradient backgrounds** - Very common, completely missing
-5. **Multiple box shadows** - Common design pattern
-6. **Z-index sorting** - Wrong layer order breaks everything
+1. **Remove Math.round()** - ✅ DONE
+2. **Font weight & style** - ✅ DONE
+3. **Transform support** - ✅ DONE
+4. **Gradient backgrounds** - ✅ DONE
+5. **Multiple box shadows** - ✅ DONE
+6. **Z-index sorting** - ⏳ Pending
+7. **Image Lazy Loading** - ✅ DONE (Auto-scroll & currentSrc)
 
 ### 🟡 High Priority
 
-7. **Background position/size** - Images sized wrong
-8. **Opacity** - Transparency errors are obvious
-9. **Border styles** (dashed, dotted)
-10. **Line height edge cases**
-11. **Padding/margin** - Affects spacing
-12. **Text shadows**
+7. **Background position/size** - ⏳ In Progress
+8. **Opacity** - ✅ DONE
+9. **Border styles** (dashed, dotted) - ⏳ Pending
+10. **Line height edge cases** - ⏳ Pending
+11. **Padding/margin** - ⏳ Pending
+12. **Text shadows** - ✅ DONE
 
 ### 🟢 Medium Priority
 
-13. **Filters (blur, etc.)**
-14. **Clip-path**
-15. **Pseudo-elements**
-16. **Object-fit variations**
-17. **Blend modes**
-18. **Inner shadows**
+13. **Filters (blur, etc.)** - ✅ DONE
+14. **Clip-path** - ✅ DONE
+15. **Pseudo-elements** - ✅ DONE (Icon fonts supported!)
+16. **Object-fit variations** - ⏳ Pending
+17. **Blend modes** - ✅ DONE
+18. **Inner shadows** - ✅ DONE
 
 ### ⚪ Low Priority (Nice to Have)
 
-19. **Flexbox auto-layout hints**
-20. **Grid layout**
-21. **Advanced text (word-spacing, etc.)**
-22. **Device pixel ratio**
+19. **Flexbox auto-layout hints** - ⏳ Pending
+20. **Grid layout** - ⏳ Pending
+21. **Advanced text (word-spacing, etc.)** - ⏳ Pending
+22. **Device pixel ratio** - ⏳ Pending
 
 ---
 
 ## 🛠️ Implementation Roadmap
 
-### Phase 1: Fix Precision (Week 1)
-- [ ] Remove all Math.round() calls
-- [ ] Add proper float handling
-- [ ] Test sub-pixel accuracy
+### Phase 1: Precision (Week 1)
+- [x] Remove all Math.round() calls
+- [x] Add proper float handling
+- [x] Test sub-pixel accuracy
 
 ### Phase 2: Typography (Week 1-2)
-- [ ] Capture font weight
-- [ ] Capture font style
-- [ ] Handle font matching better
+- [x] Capture font weight
+- [x] Capture font style
+- [ ] Handle font matching better (Complex)
 - [ ] Fix line height calculation
-- [ ] Add text shadows
+- [x] Add text shadows
 
 ### Phase 3: Transforms & Positioning (Week 2)
-- [ ] Parse CSS transforms
-- [ ] Apply transform matrices
+- [x] Parse CSS transforms
+- [ ] Apply transform matrices (Partially done)
 - [ ] Handle transform-origin
 - [ ] Proper z-index sorting
 
 ### Phase 4: Advanced Styling (Week 3)
-- [ ] Gradient backgrounds
-- [ ] Multiple box shadows
+- [x] Gradient backgrounds
+- [x] Multiple box shadows
 - [ ] Background position/size
 - [ ] Border styles
-- [ ] Opacity
+- [x] Opacity
 
 ### Phase 5: Clipping & Effects (Week 3-4)
-- [ ] Clip-path
-- [ ] Filters
-- [ ] Blend modes
-- [ ] Pseudo-elements
+- [x] Clip-path
+- [x] Filters
+- [x] Blend modes
+- [x] Pseudo-elements (Icon fonts!)
 
 ### Phase 6: Layout Hints (Week 4)
 - [ ] Flexbox properties
