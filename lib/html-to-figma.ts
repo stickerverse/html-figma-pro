@@ -466,10 +466,10 @@ export function htmlToFigma(
             type: "SVG",
             ref: el,
             svg: el.outerHTML,
-            x: Math.round(rect.left),
-            y: Math.round(rect.top),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
+            x: rect.left,
+            y: rect.top,
+            width: rect.width,
+            height: rect.height,
           });
           return;
         }
@@ -478,12 +478,12 @@ export function htmlToFigma(
           return;
         }
 
-        if (
-          el.parentElement &&
-          el.parentElement instanceof HTMLPictureElement
-        ) {
-          return;
-        }
+        // if (
+        //   el.parentElement &&
+        //   el.parentElement instanceof HTMLPictureElement
+        // ) {
+        //   return;
+        // }
 
         // Handle iframes - capture as placeholder
         if (el instanceof HTMLIFrameElement) {
@@ -492,10 +492,10 @@ export function htmlToFigma(
             layers.push({
               type: "RECTANGLE",
               ref: el,
-              x: Math.round(rect.left),
-              y: Math.round(rect.top),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height),
+              x: rect.left,
+              y: rect.top,
+              width: rect.width,
+              height: rect.height,
               fills: [
                 {
                   type: "SOLID",
@@ -602,10 +602,10 @@ export function htmlToFigma(
                 const pseudoNode = {
                   type: "RECTANGLE",
                   ref: el,
-                  x: Math.round(x),
-                  y: Math.round(y),
-                  width: Math.round(width),
-                  height: Math.round(height),
+                  x: x,
+                  y: y,
+                  width: width,
+                  height: height,
                   fills:
                     pseudoFills.length > 0
                       ? (pseudoFills as any)
@@ -669,10 +669,10 @@ export function htmlToFigma(
             const rectNode = {
               type: "RECTANGLE",
               ref: el,
-              x: Math.round(rect.left),
-              y: Math.round(rect.top),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height),
+              x: rect.left,
+              y: rect.top,
+              width: rect.width,
+              height: rect.height,
               fills: fills as any,
             } as WithRef<RectangleNode>;
 
@@ -698,7 +698,7 @@ export function htmlToFigma(
                         opacity: rgb.a || 1,
                       },
                     ];
-                    rectNode.strokeWeight = Math.round(parseFloat(width));
+                    rectNode.strokeWeight = parseFloat(width);
                   }
                 }
               }
@@ -803,7 +803,7 @@ export function htmlToFigma(
               }
             }
             if (el instanceof HTMLImageElement) {
-              const url = el.src;
+              const url = (el as HTMLImageElement).currentSrc || el.src;
               if (url) {
                 fills.push({
                   url,
@@ -815,23 +815,23 @@ export function htmlToFigma(
                 } as ImagePaint);
               }
             }
-            if (el instanceof HTMLPictureElement) {
-              const firstSource = el.querySelector("source");
-              if (firstSource) {
-                const src = getUrl(firstSource.srcset.split(/[,\s]+/g)[0]);
-                // TODO: if not absolute
-                if (src) {
-                  fills.push({
-                    url: src,
-                    type: "IMAGE",
-                    // TODO: object fit, position
-                    scaleMode:
-                      computedStyle.objectFit === "contain" ? "FIT" : "FILL",
-                    imageHash: null,
-                  } as ImagePaint);
-                }
-              }
-            }
+            // if (el instanceof HTMLPictureElement) {
+            //   const firstSource = el.querySelector("source");
+            //   if (firstSource) {
+            //     const src = getUrl(firstSource.srcset.split(/[,\s]+/g)[0]);
+            //     // TODO: if not absolute
+            //     if (src) {
+            //       fills.push({
+            //         url: src,
+            //         type: "IMAGE",
+            //         // TODO: object fit, position
+            //         scaleMode:
+            //           computedStyle.objectFit === "contain" ? "FIT" : "FILL",
+            //         imageHash: null,
+            //       } as ImagePaint);
+            //     }
+            //   }
+            // }
             if (el instanceof HTMLVideoElement) {
               const url = el.poster;
               if (url) {
@@ -1002,11 +1002,11 @@ export function htmlToFigma(
           }
 
           const textNode = {
-            x: Math.round(rect.left),
+            x: rect.left,
             ref: node,
-            y: Math.round(rect.top),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
+            y: rect.top,
+            width: rect.width,
+            height: rect.height,
             type: "TEXT",
             characters: node.textContent.trim().replace(/\s+/g, " ") || "",
           } as WithRef<TextNode>;
@@ -1056,7 +1056,7 @@ export function htmlToFigma(
 
           const fontSize = parseUnits(computedStyles.fontSize);
           if (fontSize) {
-            textNode.fontSize = Math.round(fontSize.value);
+            textNode.fontSize = fontSize.value;
           }
           if (computedStyles.fontFamily) {
             // const font = computedStyles.fontFamily.split(/\s*,\s*/);
@@ -1107,8 +1107,8 @@ export function htmlToFigma(
   // TODO: send frame: { children: []}
   const root = {
     type: "FRAME",
-    width: Math.round(window.innerWidth),
-    height: Math.round(document.documentElement.scrollHeight),
+    width: window.innerWidth,
+    height: document.documentElement.scrollHeight,
     x: 0,
     y: 0,
     ref: document.body,
