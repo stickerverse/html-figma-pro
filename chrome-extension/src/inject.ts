@@ -3,8 +3,6 @@ import { htmlToFigma } from "../../lib/html-to-figma";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const autoScroll = async () => {
-  const currentScrollY = window.scrollY;
-  const totalHeight = document.body.scrollHeight;
   const viewportHeight = window.innerHeight;
 
   // Show notification
@@ -21,10 +19,40 @@ const autoScroll = async () => {
   notification.innerText = "Scrolling to capture lazy-loaded content...";
   document.body.appendChild(notification);
 
-  // Scroll down in steps
-  for (let i = 0; i <= totalHeight; i += viewportHeight) {
-    window.scrollTo(0, i);
-    await sleep(200); // Wait for network/render
+  // Scroll down in steps with dynamic height check
+  let currentPos = 0;
+  while (true) {
+    const totalHeight = Math.max(
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight
+    );
+
+    if (currentPos >= totalHeight) break;
+
+    currentPos = Math.min(currentPos + viewportHeight, totalHeight);
+    window.scrollTo({ top: currentPos, behavior: "smooth" });
+
+    await sleep(400); // 400ms for smooth scroll and lazy loading
+
+    // If we've reached the bottom, check one last time if content expanded
+    if (
+      currentPos >=
+      Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight
+      )
+    ) {
+      await sleep(500);
+      if (
+        currentPos >=
+        Math.max(
+          document.body.scrollHeight,
+          document.documentElement.scrollHeight
+        )
+      ) {
+        break;
+      }
+    }
   }
 
   // Scroll back to top
