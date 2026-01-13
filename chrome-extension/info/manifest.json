@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+
+  "name": "HTML <> Figma",
+  "description": "Import a web page to Figma layers",
+  "version": "0.0.5",
+
+  "action": {
+    "default_icon": "icon16.png",
+    "default_popup": "popup.html"
+  },
+
+  "background": {
+    "service_worker": "js/background.js"
+  },
+
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+
+  "permissions": ["activeTab", "scripting"]
+}

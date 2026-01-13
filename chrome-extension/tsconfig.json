@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "es6",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "dist/js",
+    "sourceMap": true,
+    "strict": true,
+    "jsx": "react",
+    "lib": ["es2016", "dom"],
+    "experimentalDecorators": true,
+    "typeRoots": ["node_modules/@types", "../node_modules/@figma"],
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true
+  },
+  "include": ["src", "../lib", "../shared"],
+  "exclude": ["node_modules"]
+}

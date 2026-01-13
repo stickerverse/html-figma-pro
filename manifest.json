@@ -1,0 +1,8 @@
+{
+  "name": "HTML <> Figma",
+  "editorType": ["figma"],
+  "id": "747985167520967365",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html"
+}
